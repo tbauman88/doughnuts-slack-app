@@ -1,10 +1,6 @@
 [build]
-  command = "yarn build:lambda"
-  functions = "lambda"
+  command = "echo 'build'"
+  functions = "functions"
 
 [dev]
-  framework = "#custom"
-  command = "yarn start:lambda" 
   functions = "functions"
-  targetPort = 3000 
-  autoLaunch = true
