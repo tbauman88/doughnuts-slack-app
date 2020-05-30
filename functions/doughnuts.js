@@ -1,30 +1,32 @@
-// @ts-check
-require("dotenv/config");
-
-const pptr = require("puppeteer");
-const { JSDOM } = require("jsdom");
-const fetch = require("node-fetch").default;
-
-let domain = "https://boxcardonuts.ca";
+const { JSDOM } = require('jsdom');
+const chromium = require('chrome-aws-lambda');
+const fetch = require('node-fetch').default;
 
 const getDoughnuts = async () => {
-  const browser = await pptr.launch();
+  const browser = await chromium.puppeteer.launch({
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
+    executablePath: await chromium.executablePath,
+    headless: chromium.headless
+  });
 
   const page = await browser.newPage();
-  await page.goto(`${domain}/product-category/donuts/our-weekly-flavours/`);
+  let domainUrl =
+    'https://boxcardonuts.ca/product-category/donuts/our-weekly-flavours';
+  await page.goto(domainUrl, { waitUntil: 'networkidle2' });
 
   const content = await page.content();
   const dom = new JSDOM(content);
 
   const [, ...doughnuts] = Array.from(
-    dom.window.document.querySelectorAll(".product_cat-our-weekly-flavours")
+    dom.window.document.querySelectorAll('.product_cat-our-weekly-flavours')
   ).map((node) => ({
-    url: node.querySelector(`a[href]`).getAttribute("href"),
-    id: "",
-    name: "",
-    description: "",
-    price: "",
-    imageUrl: "",
+    url: node.querySelector(`a[href]`).getAttribute('href'),
+    id: '',
+    name: '',
+    description: '',
+    price: '',
+    imageUrl: ''
   }));
 
   await Promise.all(
@@ -35,18 +37,18 @@ const getDoughnuts = async () => {
 
       const content = await doughnutPage.content();
       const dom = new JSDOM(content);
-      const pageClass = ".woocommerce-product-";
+      const pageClass = '.woocommerce-product-';
 
-      const title = dom.window.document.querySelector(".product_title")
+      const title = dom.window.document.querySelector('.product_title')
         .innerHTML;
 
-      doughnut.id = title.replace(/\s+/g, "-").toLowerCase();
+      doughnut.id = title.replace(/\s+/g, '-').toLowerCase();
       doughnut.name = title;
 
       doughnut.price = `$${
         dom.window.document
-          .querySelector(".amount")
-          .innerHTML.split("</span>")[1]
+          .querySelector('.amount')
+          .innerHTML.split('</span>')[1]
       }`;
 
       const description = dom.window.document.querySelector(
@@ -55,18 +57,18 @@ const getDoughnuts = async () => {
 
       doughnut.description =
         description === null
-          ? "No descrioption"
+          ? 'No descrioption'
           : description.innerHTML
               .split(/\<[^>]*\>/g)
-              .join("")
-              .split("&nbsp;")
-              .join("")
-              .replace("  ", " ");
+              .join('')
+              .split('&nbsp;')
+              .join('')
+              .replace('  ', ' ');
 
       doughnut.imageUrl = dom.window.document
         .querySelector(`${pageClass}gallery__image`)
         .querySelector(`a[href]`)
-        .getAttribute("href");
+        .getAttribute('href');
 
       await doughnutPage.close();
     })
@@ -78,47 +80,66 @@ const getDoughnuts = async () => {
 };
 
 exports.handler = async function (event, context, callback) {
-  if (event.httpMethod !== "POST") {
+  if (event.httpMethod !== 'POST') {
     return {
       statusCode: 503,
-      body: "Unsupported Request Method",
+      body: 'Unsupported Request Method'
     };
   }
 
-  const url = `https://hooks.slack.com/services/${process.env.SLACK_HOOK}`;
+  const url = `https://hooks.slack.com/services/${process.env.TESTING}`;
 
-  await fetch(url, {
-    method: "POST",
-    body: JSON.stringify({ mrkdwn: true, text: "This weeks doughnuts are:" }),
-  });
+  const doughnuts = await getDoughnuts();
+
+  try {
+    await fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({
+        blocks: [
+          doughnuts.length === 0
+            ? {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text:
+                    'This weeks *ARRAY* of doughnuts are: `undefined is not a function!` :sad:'
+                }
+              }
+            : {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: 'This weeks *ARRAY* of doughnuts are:'
+                }
+              },
+          { type: 'divider' },
+          ...doughnuts.map((doughnut) => {
+            return {
+              type: 'section',
+              block_id: doughnut.id,
+              text: {
+                type: 'mrkdwn',
+                text: `*${doughnut.name}* ${doughnut.price} | <${doughnut.url}| BUY NOW!> \n ${doughnut.description}`
+              },
+              accessory: {
+                type: 'image',
+                image_url: doughnut.imageUrl,
+                alt_text: doughnut.name
+              }
+            };
+          })
+        ]
+      })
+    });
+
+    callback(null, {
+      statusCode: 204,
+      body:
+        doughnuts.length === 0
+          ? 'No doughnuts were posted!'
+          : 'Successfully posted doughnuts!'
+    });
+  } catch (e) {
+    callback(null, { statusCode: 500, body: 'Internal Server Error: ' + e });
+  }
 };
-
-// body: {
-//   mkdwn: true,
-//   text: 'This weeks doughnuts are:',
-//   blocks: [
-//     {
-//       type: 'section',
-//       text: {
-//         type: 'mrkdwn',
-//         text: 'This weeks *ARRAY* of doughnuts are:'
-//       }
-//     },
-//     { type: 'divider' },
-//     ...doughnuts.map((doughnut) => {
-//       return {
-//         type: 'section',
-//         block_id: doughnut.id,
-//         text: {
-//           type: 'mrkdwn',
-//           text: `*${doughnut.name}* ${doughnut.price} | <${doughnut.url}| BUY NOW!> \n ${doughnut.description}`
-//         },
-//         accessory: {
-//           type: 'image',
-//           image_url: doughnut.imageUrl,
-//           alt_text: doughnut.name
-//         }
-//       };
-//     })
-//   ]
-// }

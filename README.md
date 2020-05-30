@@ -6,11 +6,9 @@
 
 ## What is Doughnuts Slack App? 🍩
 
-This is a custom Slack application built to post weekly doughnuts to a channel of your choosing.
+This is a custom Slack application built to post weekly doughnuts to a slack channel of your choosing.
 
-Using a node script we grab weekly doughnuts from [Boxcar Donuts](https://www.bxcrdonuts.ca/). 
-
-Plugging into slack using webhooks and post the doughnuts in their [Block Kit](https://api.slack.com/block-kit).
+Using [Netlify Functions](https://docs.netlify.com/functions/overview/) it runs a serverless endpoint to grab weekly flavours from [Boxcar Donuts](https://www.boxcardonuts.ca/) and post them to Slack using webhook and their [Block Kit](https://api.slack.com/block-kit) component structure.
 
 ```ts
 {

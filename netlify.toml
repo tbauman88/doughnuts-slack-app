@@ -1,6 +1,3 @@
 [build]
-  command = "echo 'build'"
-  functions = "functions"
-
-[dev]
+  command = "npm install"
   functions = "functions"
