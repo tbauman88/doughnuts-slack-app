@@ -1,103 +1,95 @@
-import { JSDOM } from 'jsdom';
-import { launch } from 'puppeteer';
+// @ts-check
+require("dotenv/config");
 
-const dotenv = require('dotenv');
-const fetch = require('node-fetch');
+const pptr = require("puppeteer");
+const { JSDOM } = require("jsdom");
+const fetch = require("node-fetch").default;
 
-dotenv.config();
+let domain = "https://boxcardonuts.ca";
 
-let domain = 'https://boxcardonuts.ca';
-let browser;
+const getDoughnuts = async () => {
+  const browser = await pptr.launch();
 
-const runGetDoughnuts = async () => {
-  const page = await getPage(
-    `${domain}/product-category/donuts/our-weekly-flavours/`
-  );
+  const page = await browser.newPage();
+  await page.goto(`${domain}/product-category/donuts/our-weekly-flavours/`);
 
   const content = await page.content();
   const dom = new JSDOM(content);
 
-  const doughnuts = Array.from(
-    dom.window.document.querySelectorAll('.product_cat-our-weekly-flavours')
-  ).map((node) => {
-    let doughnut = {};
-    doughnut.url = node.querySelector(`a[href]`).getAttribute('href');
-    return doughnut;
-  });
+  const [, ...doughnuts] = Array.from(
+    dom.window.document.querySelectorAll(".product_cat-our-weekly-flavours")
+  ).map((node) => ({
+    url: node.querySelector(`a[href]`).getAttribute("href"),
+    id: "",
+    name: "",
+    description: "",
+    price: "",
+    imageUrl: "",
+  }));
 
-  doughnuts.splice(0, 1);
+  await Promise.all(
+    doughnuts.map(async (doughnut) => {
+      const doughnutPage = await browser.newPage();
 
-  for (const doughnut of doughnuts) {
-    await page.goto(doughnut.url);
+      await doughnutPage.goto(doughnut.url);
 
-    const content = await page.content();
-    const dom = new JSDOM(content);
-    const pageClass = '.woocommerce-product-';
+      const content = await doughnutPage.content();
+      const dom = new JSDOM(content);
+      const pageClass = ".woocommerce-product-";
 
-    const title = dom.window.document.querySelector('.product_title').innerHTML;
+      const title = dom.window.document.querySelector(".product_title")
+        .innerHTML;
 
-    doughnut.id = title.replace(/\s+/g, '-').toLowerCase();
-    doughnut.name = title;
+      doughnut.id = title.replace(/\s+/g, "-").toLowerCase();
+      doughnut.name = title;
 
-    doughnut.price = `$${
-      dom.window.document.querySelector('.amount').innerHTML.split('</span>')[1]
-    }`;
+      doughnut.price = `$${
+        dom.window.document
+          .querySelector(".amount")
+          .innerHTML.split("</span>")[1]
+      }`;
 
-    const description = dom.window.document.querySelector(
-      `${pageClass}details__short-description > p`
-    );
+      const description = dom.window.document.querySelector(
+        `${pageClass}details__short-description > p`
+      );
 
-    doughnut.description =
-      description === null
-        ? 'No descrioption'
-        : description.innerHTML
-            .split(/\<[^>]*\>/g)
-            .join('')
-            .split('&nbsp;')
-            .join('')
-            .replace('  ', ' ');
+      doughnut.description =
+        description === null
+          ? "No descrioption"
+          : description.innerHTML
+              .split(/\<[^>]*\>/g)
+              .join("")
+              .split("&nbsp;")
+              .join("")
+              .replace("  ", " ");
 
-    doughnut.imageUrl = dom.window.document
-      .querySelector(`${pageClass}gallery__image`)
-      .querySelector(`a[href]`)
-      .getAttribute('href');
-  }
+      doughnut.imageUrl = dom.window.document
+        .querySelector(`${pageClass}gallery__image`)
+        .querySelector(`a[href]`)
+        .getAttribute("href");
+
+      await doughnutPage.close();
+    })
+  );
+
+  await browser.close();
 
   return doughnuts;
 };
 
-async function getPage(url) {
-  let page = await browser.newPage();
-  await page.goto(url);
-  return page;
-}
-
-let doughnuts;
-
-(async () => {
-  try {
-    browser = await launch();
-    doughnuts = await runGetDoughnuts();
-    browser.close();
-  } catch (error) {
-    console.log('doughnuts error: ', error);
-  }
-})();
-
-exports.handler = function (event, context, callback) {
-  if (event.httpMethod !== 'POST') {
-    return callback(null, {
-      statusCode: 410,
-      body: 'Unsupported Request Method'
-    });
+exports.handler = async function (event, context, callback) {
+  if (event.httpMethod !== "POST") {
+    return {
+      statusCode: 503,
+      body: "Unsupported Request Method",
+    };
   }
 
   const url = `https://hooks.slack.com/services/${process.env.SLACK_HOOK}`;
 
-  fetch(url, {
-    method: 'POST',
-    body: { mrkdwn: true, text: 'This weeks doughnuts are:' },
-    json: true
+  await fetch(url, {
+    method: "POST",
+    body: JSON.stringify({ mrkdwn: true, text: "This weeks doughnuts are:" }),
   });
 };
 
