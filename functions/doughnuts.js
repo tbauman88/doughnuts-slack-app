@@ -68,8 +68,6 @@ exports.handler = async function (event, context, callback) {
 
   const doughnuts = await getDoughnuts();
 
-  console.log(doughnuts);
-
   try {
     await fetch(url, {
       method: 'POST',
