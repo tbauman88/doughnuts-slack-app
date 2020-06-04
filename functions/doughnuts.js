@@ -1,3 +1,5 @@
+// @ts-check
+
 const { JSDOM } = require('jsdom');
 const chromium = require('chrome-aws-lambda');
 const fetch = require('node-fetch').default;
@@ -7,71 +9,28 @@ const getDoughnuts = async () => {
     args: chromium.args,
     defaultViewport: chromium.defaultViewport,
     executablePath: await chromium.executablePath,
-    headless: chromium.headless
+    headless: chromium.headless,
   });
 
   const page = await browser.newPage();
-  let domainUrl =
-    'https://boxcardonuts.ca/product-category/donuts/our-weekly-flavours';
-  await page.goto(domainUrl, { waitUntil: 'networkidle2' });
+  await page.goto(
+    'https://boxcardonuts.ca/product-category/donuts/our-weekly-flavours',
+  );
 
   const content = await page.content();
   const dom = new JSDOM(content);
 
-  const [, ...doughnuts] = Array.from(
-    dom.window.document.querySelectorAll('.product_cat-our-weekly-flavours')
-  ).map((node) => ({
-    url: node.querySelector(`a[href]`).getAttribute('href'),
-    id: '',
-    name: '',
-    description: '',
-    price: '',
-    imageUrl: ''
-  }));
+  const [, ...doughnutUrls] = Array.from(
+    dom.window.document.querySelectorAll('.product_cat-our-weekly-flavours'),
+  ).map((node) => node.querySelector(`a[href]`).getAttribute('href'));
 
-  await Promise.all(
-    doughnuts.map(async (doughnut) => {
-      const doughnutPage = await browser.newPage();
-
-      await doughnutPage.goto(doughnut.url);
-
-      const content = await doughnutPage.content();
-      const dom = new JSDOM(content);
-      const pageClass = '.woocommerce-product-';
-
-      const title = dom.window.document.querySelector('.product_title')
-        .innerHTML;
-
-      doughnut.id = title.replace(/\s+/g, '-').toLowerCase();
-      doughnut.name = title;
-
-      doughnut.price = `$${
-        dom.window.document
-          .querySelector('.amount')
-          .innerHTML.split('</span>')[1]
-      }`;
-
-      const description = dom.window.document.querySelector(
-        `${pageClass}details__short-description > p`
-      );
-
-      doughnut.description =
-        description === null
-          ? 'No descrioption'
-          : description.innerHTML
-              .split(/\<[^>]*\>/g)
-              .join('')
-              .split('&nbsp;')
-              .join('')
-              .replace('  ', ' ');
-
-      doughnut.imageUrl = dom.window.document
-        .querySelector(`${pageClass}gallery__image`)
-        .querySelector(`a[href]`)
-        .getAttribute('href');
-
-      await doughnutPage.close();
-    })
+  const doughnuts = await Promise.all(
+    doughnutUrls.map((url) =>
+      fetch(`${process.env.HOST}/.netlify/functions/doughnut`, {
+        method: 'post',
+        body: JSON.stringify({ url }),
+      }).then((res) => res.json()),
+    ),
   );
 
   await browser.close();
@@ -83,7 +42,7 @@ exports.handler = async function (event, context, callback) {
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 503,
-      body: 'Unsupported Request Method'
+      body: 'Unsupported Request Method',
     };
   }
 
@@ -102,15 +61,15 @@ exports.handler = async function (event, context, callback) {
                 text: {
                   type: 'mrkdwn',
                   text:
-                    'This weeks *ARRAY* of doughnuts are: `undefined is not a function!` :sad:'
-                }
+                    'This weeks *ARRAY* of doughnuts are: `undefined is not a function!` :sad:',
+                },
               }
             : {
                 type: 'section',
                 text: {
                   type: 'mrkdwn',
-                  text: 'This weeks *ARRAY* of doughnuts are:'
-                }
+                  text: 'This weeks *ARRAY* of doughnuts are:',
+                },
               },
           { type: 'divider' },
           ...doughnuts.map((doughnut) => {
@@ -119,17 +78,17 @@ exports.handler = async function (event, context, callback) {
               block_id: doughnut.id,
               text: {
                 type: 'mrkdwn',
-                text: `*${doughnut.name}* ${doughnut.price} | <${doughnut.url}| BUY NOW!> \n ${doughnut.description}`
+                text: `*${doughnut.name}* ${doughnut.price} | <${doughnut.url}| BUY NOW!> \n ${doughnut.description}`,
               },
               accessory: {
                 type: 'image',
                 image_url: doughnut.imageUrl,
-                alt_text: doughnut.name
-              }
+                alt_text: doughnut.name,
+              },
             };
-          })
-        ]
-      })
+          }),
+        ],
+      }),
     });
 
     callback(null, {
@@ -137,7 +96,7 @@ exports.handler = async function (event, context, callback) {
       body:
         doughnuts.length === 0
           ? 'No doughnuts were posted!'
-          : 'Successfully posted doughnuts!'
+          : 'Successfully posted doughnuts!',
     });
   } catch (e) {
     callback(null, { statusCode: 500, body: 'Internal Server Error: ' + e });
