@@ -1,39 +1,57 @@
 // @ts-check
 
 const { JSDOM } = require('jsdom');
-const chromium = require('chrome-aws-lambda');
 const fetch = require('node-fetch').default;
 
 const getDoughnuts = async () => {
-  const browser = await chromium.puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath: await chromium.executablePath,
-    headless: chromium.headless,
-  });
-
-  const page = await browser.newPage();
-  await page.goto(
+  const content = await fetch(
     'https://boxcardonuts.ca/product-category/donuts/our-weekly-flavours',
-  );
+  ).then((res) => res.text());
 
-  const content = await page.content();
   const dom = new JSDOM(content);
 
   const [, ...doughnutUrls] = Array.from(
     dom.window.document.querySelectorAll('.product_cat-our-weekly-flavours'),
   ).map((node) => node.querySelector(`a[href]`).getAttribute('href'));
 
-  const doughnuts = await Promise.all(
-    doughnutUrls.map((url) =>
-      fetch(`${process.env.HOST}/.netlify/functions/doughnut`, {
-        method: 'post',
-        body: JSON.stringify({ url }),
-      }).then((res) => res.json()),
-    ),
-  );
+  const [, ...doughnuts] = Array.from(
+    dom.window.document.querySelectorAll('.product_cat-our-weekly-flavours'),
+  ).map((node) => {
+    const name = node.querySelector('.woocommerce-loop-product__title')
+      .textContent;
+    return {
+      id: name.replace(/\s+/g, '-').toLowerCase(),
+      url: node.querySelector(`a[href]`).getAttribute('href'),
+      name,
+      description: '',
+      price: `$${node.querySelector('.amount').innerHTML.split('</span>')[1]}`,
+      imageUrl: node
+        .querySelector('.attachment-woocommerce_thumbnail')
+        .getAttribute('src'),
+    };
+  });
 
-  await browser.close();
+  await Promise.all(
+    doughnuts.map(async (doughnut) => {
+      const content = await fetch(doughnut.url).then((res) => res.text());
+      const dom = new JSDOM(content);
+      const pageClass = '.woocommerce-product-';
+
+      const description = dom.window.document.querySelector(
+        `${pageClass}details__short-description > p`,
+      );
+
+      doughnut.description =
+        description === null
+          ? 'No descrioption'
+          : description.innerHTML
+              .split(/\<[^>]*\>/g)
+              .join('')
+              .split('&nbsp;')
+              .join('')
+              .replace('  ', ' ');
+    }),
+  );
 
   return doughnuts;
 };
@@ -49,6 +67,8 @@ exports.handler = async function (event, context, callback) {
   const url = `https://hooks.slack.com/services/${process.env.TESTING}`;
 
   const doughnuts = await getDoughnuts();
+
+  console.log(doughnuts);
 
   try {
     await fetch(url, {
