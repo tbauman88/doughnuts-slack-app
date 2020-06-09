@@ -14,6 +14,7 @@ const getDoughnuts = async () => {
   ).map((node) => {
     const name = node.querySelector('.woocommerce-loop-product__title')
       .textContent;
+
     return {
       url: node.querySelector(`a[href]`).getAttribute('href'),
       name,
@@ -32,24 +33,16 @@ const getDoughnuts = async () => {
       const dom = new JSDOM(content);
       const pageClass = '.woocommerce-product-';
 
-      const description = dom.window.document.querySelector(
-        `${pageClass}details__short-description > p`
-      );
-
-      doughnut.description =
-        description === null
-          ? 'No description'
-          : description.innerHTML
-              .split(/\<[^>]*\>/g)
-              .join('')
-              .split('&nbsp;')
-              .join('')
-              .replace('  ', ' ');
+      doughnut.description = dom.window.document
+        .querySelector(`${pageClass}details__short-description > p`)
+        .textContent.replace('  ', ' ');
     })
   );
 
-  return doughnuts;
+  return randomizeDoughnuts(doughnuts);
 };
+
+const randomizeDoughnuts = (array) => array.sort(() => Math.random() - 0.5);
 
 exports.handler = async function (event, context, callback) {
   if (event.httpMethod !== 'POST') {
@@ -58,12 +51,12 @@ exports.handler = async function (event, context, callback) {
       body: 'Unsupported Request Method'
     };
   }
-
   callback(null, { statusCode: 200, body: '' });
 
   try {
-    const doughnuts = await getDoughnuts();
-    const url = `https://hooks.slack.com/services/${process.env.VEHIKL_SOCIAL}`;
+    const [firstDoughnut] = await getDoughnuts();
+
+    const url = `https://hooks.slack.com/services/${process.env.TESTING}`;
 
     await fetch(url, {
       method: 'POST',
@@ -73,28 +66,25 @@ exports.handler = async function (event, context, callback) {
             type: 'section',
             text: {
               type: 'mrkdwn',
-              text:
-                doughnuts.length === 0
-                  ? 'This weeks *ARRAY* of doughnuts are: `undefined is not a function!` :sad:'
-                  : '`Array.sort()` this weeks doughnuts by price'
+              text: firstDoughnut
+                ? 'You had me at *Hello World!* :doughnut:'
+                : 'Doughnuts are `undefined is not a function!` :sad:'
             }
           },
           { type: 'divider' },
-          ...doughnuts.map((doughnut) => {
-            return {
-              type: 'section',
-              block_id: doughnut.id,
-              text: {
-                type: 'mrkdwn',
-                text: `*${doughnut.name}* ${doughnut.price} | <${doughnut.url}| BUY NOW!> \n ${doughnut.description}`
-              },
-              accessory: {
-                type: 'image',
-                image_url: doughnut.imageUrl,
-                alt_text: doughnut.name
-              }
-            };
-          })
+          {
+            type: 'section',
+            block_id: firstDoughnut.id,
+            text: {
+              type: 'mrkdwn',
+              text: `*${firstDoughnut.name}* ${firstDoughnut.price} | <${firstDoughnut.url}| BUY NOW!> \n ${firstDoughnut.description}`
+            },
+            accessory: {
+              type: 'image',
+              image_url: firstDoughnut.imageUrl,
+              alt_text: firstDoughnut.name
+            }
+          }
         ]
       })
     });
