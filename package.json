@@ -14,7 +14,7 @@
     "dev": "netlify dev"
   },
   "dependencies": {
-    "jsdom": "^16.2.2",
+    "jsdom": "^16.5.0",
     "node-fetch": "^2.6.1"
   },
   "devDependencies": {
